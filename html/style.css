@@ -1,0 +1,67 @@
+body { margin: 0; background: #111; color: #eee; font-family: -apple-system, system-ui, sans-serif;
+       padding: env(safe-area-inset-top,0) 12px env(safe-area-inset-bottom,0); }
+h1 { font-size: 1.1rem; margin: 12px 0 4px; }
+#status { color: #9ad; margin-bottom: 8px; }
+#status.ok { color: #6f6; }
+#status.error { color: #f66; }
+#signal { font-size: 0.85rem; margin-bottom: 8px; color: #999; }
+#signal.good { color: #6f6; }
+#signal.weak { color: #fa6; }
+#video-wrap { position: relative; width: 100%; max-width: 480px; margin: 0 auto; }
+video, canvas { width: 100%; border-radius: 8px; display: block; }
+canvas#overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+#progress { font-size: 1.4rem; margin: 12px 0 6px; text-align: center; }
+#missing { color: #999; font-size: 0.85rem; text-align: center; margin-bottom: 8px; }
+#grid { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-bottom: 10px; }
+#grid .cell { width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center;
+              justify-content: center; font-size: 0.7rem; font-family: ui-monospace, monospace;
+              background: #333; color: #777; transition: background 0.15s, color 0.15s; }
+#grid .cell.got { background: #2a5; color: #fff; }
+#grid .cell.just-got { background: #6f6; color: #113; }
+#result { background: #1a1a1a; border-radius: 8px; padding: 10px; white-space: pre-wrap;
+          word-break: break-all; font-family: ui-monospace, monospace; font-size: 0.8rem;
+          max-height: 40vh; overflow-y: auto; }
+button { background: #2a5; color: #fff; border: none; border-radius: 6px; padding: 10px 16px;
+         font-size: 1rem; margin: 8px 4px 8px 0; }
+button.secondary { background: #444; }
+#vkNote { color: #999; font-size: 0.8rem; margin: 8px 0; }
+.error { color: #f66; }
+.ok { color: #6f6; }
+
+/* Layout and tabs */
+header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.tabs { display: flex; gap: 4px; }
+.tab { color: #ccc; text-decoration: none; padding: 8px 14px; border-radius: 6px; background: #222; }
+.tab[aria-current="page"] { background: #2a5; color: #fff; }
+.tab:focus-visible, button:focus-visible, .drop:focus-within { outline: 2px solid #6cf; outline-offset: 2px; }
+.hint { color: #aaa; font-size: 0.9rem; }
+code { font-family: ui-monospace, monospace; color: #ddd; }
+footer { color: #777; font-size: 0.75rem; margin: 24px 0 12px; }
+
+/* To device */
+.drop { display: block; border: 2px dashed #555; border-radius: 8px; padding: 22px 12px; text-align: center;
+        color: #bbb; cursor: pointer; margin: 8px 0 12px; }
+.drop.over { border-color: #6f6; color: #6f6; }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+#sendInfo { background: #1a1a1a; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+#sendInfo:empty { display: none; }
+#sendInfo h2 { font-size: 1rem; margin: 0 0 6px; }
+#sendInfo dl { margin: 8px 0; }
+#sendInfo dt { color: #999; margin-top: 6px; }
+#sendInfo dd { margin: 0; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+@media (min-width: 700px) {
+  #sendInfo dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; }
+  #sendInfo dt { margin-top: 0; }
+}
+#sendInfo .check { color: #fc6; margin: 8px 0 0; }
+#sendInfo.refused { color: #f66; }
+
+/* Full-screen QR player: grey background like the proven slideshow images */
+#qrStage { position: fixed; inset: 0; background: #bdbdbd; display: flex; flex-direction: column;
+           align-items: center; justify-content: center; z-index: 10; }
+#qrStage[hidden] { display: none; }
+#qrCanvas { width: auto; border-radius: 0; image-rendering: pixelated; }
+#qrBar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px;
+         padding: 6px 8px env(safe-area-inset-bottom, 0); }
+#qrBar button { margin: 2px; padding: 8px 12px; }
+#qrCounter, #qrSpeed { color: #111; font-weight: 600; margin: 0 6px; }

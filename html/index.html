@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>7F Signer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>7F Signer</h1>
+  <nav class="tabs" aria-label="Direction">
+    <a href="#from-device" id="tabFrom" class="tab">From device</a>
+    <a href="#to-device" id="tabTo" class="tab">To device</a>
+  </nav>
+</header>
+
+<main>
+<section id="from-device" hidden>
+  <p class="hint">Point the camera at the device's QR. Saves what the device exports: <code>&lt;ski&gt;.vk</code>, <code>root-&lt;ski&gt;.pem</code>, <code>&lt;ski&gt;.genesis</code>, <code>&lt;ski&gt;.devfund</code>, <code>deputy-&lt;ski&gt;.pem</code>.</p>
+  <div id="status"></div>
+  <div id="signal"></div>
+  <div id="video-wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
+  <canvas id="capture" hidden></canvas>
+  <div id="progress"></div>
+  <div id="grid"></div>
+  <div id="missing"></div>
+  <div>
+    <button id="reset">Reset</button>
+    <button id="torch" class="secondary" hidden>Torch: off</button>
+    <button id="copy" class="secondary" hidden>Copy result</button>
+    <button id="copyVk" class="secondary" hidden>Copy VK</button>
+    <button id="saveExport" hidden>Save</button>
+    <button id="saveVk" hidden>Save .vk</button>
+    <button id="saveSummary" class="secondary" hidden>Save summary</button>
+    <button id="copyAll" class="secondary" hidden>Copy all</button>
+    <button id="copyId" class="secondary" hidden>Copy ID</button>
+  </div>
+  <p id="vkNote" hidden>How the ids below are derived: pin = SHA-256 of the raw vk bytes
+    (hex-decoded, not the hex text), 64 hex; subject key id = the first 20 bytes of that
+    hash (the pin's first 40 hex), RFC 7093 method 1. Same values sf-wallet-gov prints.</p>
+  <div id="result"></div>
+</section>
+
+<section id="to-device" hidden>
+  <p class="hint">Pick the file the device must scan: <code>genesis-unsigned.json</code>, <code>devfund-unsigned.json</code>, <code>root-&lt;ski&gt;.pem</code> or a Deputy CSR <code>.pem</code>. Nothing is uploaded; the file stays in this browser.</p>
+  <label id="dropZone" class="drop">
+    <input type="file" id="sendFile" accept=".json,.pem,application/json,application/x-pem-file">
+    <span>Choose a file, or drop it here</span>
+  </label>
+  <div id="sendInfo"></div>
+  <button id="showQr" hidden>Show QR to the device</button>
+</section>
+</main>
+
+<div id="qrStage" hidden>
+  <canvas id="qrCanvas"></canvas>
+  <div id="qrBar">
+    <span id="qrCounter"></span>
+    <button id="qrPrev" class="secondary" aria-label="Previous part">&#9664;</button>
+    <button id="qrPause" class="secondary">Pause</button>
+    <button id="qrNext" class="secondary" aria-label="Next part">&#9654;</button>
+    <button id="qrSlower" class="secondary">Slower</button>
+    <button id="qrFaster" class="secondary">Faster</button>
+    <span id="qrSpeed"></span>
+    <button id="qrClose">Done</button>
+  </div>
+</div>
+
+<footer>Version <span id="version"></span>. Runs entirely in this browser; nothing is sent anywhere.</footer>
+
+<script src="version.js"></script>
+<script src="jsQR.min.js"></script>
+<script src="pako.min.js"></script>
+<script src="qrcode-generator.js"></script>
+<script src="bbqr-decode.js"></script>
+<script src="bbqr-encode.js"></script>
+<script src="app-scan.js"></script>
+<script src="app-send.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
