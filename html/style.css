@@ -65,3 +65,24 @@ footer { color: #777; font-size: 0.75rem; margin: 24px 0 12px; }
          padding: 6px 8px env(safe-area-inset-bottom, 0); }
 #qrBar button { margin: 2px; padding: 8px 12px; }
 #qrCounter, #qrSpeed { color: #111; font-weight: 600; margin: 0 6px; }
+
+/* Start */
+#start { max-width: 1000px; line-height: 1.45; }
+#start h2 { font-size: 1.05rem; margin: 22px 0 6px; }
+#start h3 { font-size: 0.95rem; margin: 16px 0 4px; }
+#start a { color: #6cf; }
+.lead { color: #ccc; }
+.cards { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 900px) { .cards { grid-template-columns: 1fr 1fr; } }
+.card { background: #1a1a1a; border-radius: 8px; padding: 4px 12px 10px; min-width: 0; }
+.card h2 a { text-decoration: none; }
+.card ol { padding-left: 1.3em; }
+.card li { margin-bottom: 4px; }
+.when { color: #fc6; }
+table.guide { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+table.guide th { text-align: left; color: #999; font-weight: normal; padding: 4px 6px; }
+table.guide td { border-top: 1px solid #333; padding: 5px 6px; vertical-align: top; overflow-wrap: break-word; }
+dl.ids dt { font-weight: 600; margin-top: 8px; }
+dl.ids dd { margin: 2px 0 0; color: #bbb; }
+#start pre { background: #1a1a1a; border-radius: 6px; padding: 8px 10px; overflow-x: auto; }
+.hint a { color: #6cf; }

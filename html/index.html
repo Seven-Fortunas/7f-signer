@@ -12,14 +12,102 @@
 <header>
   <h1>7F Signer</h1>
   <nav class="tabs" aria-label="Direction">
+    <a href="#start" id="tabStart" class="tab">Start</a>
     <a href="#from-device" id="tabFrom" class="tab">From device</a>
     <a href="#to-device" id="tabTo" class="tab">To device</a>
   </nav>
 </header>
 
 <main>
+<section id="start" hidden>
+  <p class="lead">This page moves ceremony files between this computer or phone and a 7F SeedSigner by animated QR codes. It runs entirely in this browser: nothing is uploaded.</p>
+
+  <div class="cards">
+    <article class="card">
+      <h2><a href="#from-device">From device</a></h2>
+      <p class="when">Use it when the device shows a QR: it is exporting a key, a certificate or a signature.</p>
+      <ol>
+        <li>Open <a href="#from-device">From device</a> and allow the camera.</li>
+        <li>Fill most of the camera view with the device's QR and hold steady. Parts arrive in any order; the grid turns green as they do.</li>
+        <li>Compare what the page shows with the device's screen: the subject key id and, for a key, the pin.</li>
+        <li>Press <b>Save</b>. Keep Root and dev-fund files in separate folders; for a key the page says which. <b>NOT SAVED</b> means the file name did not match the content: scan again, never rename by hand.</li>
+        <li><b>Save summary</b> (optional) writes <code>&lt;ski&gt;.txt</code>, a record for you. Send the file, not the summary.</li>
+      </ol>
+      <table class="guide">
+        <thead><tr><th>Device menu</th><th>Saves</th><th>Folder</th></tr></thead>
+        <tbody>
+          <tr><td>7F: Enroll Root (export VK)</td><td><code>&lt;ski&gt;.vk</code></td><td>Root</td></tr>
+          <tr><td>7F: Self-Certify Root</td><td><code>root-&lt;ski&gt;.pem</code>, then the Root <code>&lt;ski&gt;.vk</code></td><td>Root</td></tr>
+          <tr><td>7F: Enroll Dev-fund (export VK)</td><td><code>&lt;ski&gt;.vk</code></td><td>Dev-fund</td></tr>
+          <tr><td>7F: Sign Genesis Config</td><td><code>&lt;ski&gt;.genesis</code></td><td>Root</td></tr>
+          <tr><td>7F: Sign Devfund Config</td><td><code>&lt;ski&gt;.devfund</code> (signed by the Root key)</td><td>Root</td></tr>
+          <tr><td>7F: Cross-Certify Deputy</td><td><code>deputy-&lt;Root ski&gt;.pem</code></td><td>Deputy</td></tr>
+        </tbody>
+      </table>
+    </article>
+
+    <article class="card">
+      <h2><a href="#to-device">To device</a></h2>
+      <p class="when">Use it when the device asks you to scan a file.</p>
+      <ol>
+        <li>On the device, open the menu below and go on to its scan step.</li>
+        <li>Open <a href="#to-device">To device</a> and choose the file, or drop it on the page. It stays in this browser.</li>
+        <li>Read the fields the page shows: the device will show the same ones on its review pages. Compare them with what the coordinator told you.</li>
+        <li>Press <b>Show QR to the device</b>, turn the screen brightness up, and point the device's camera at it. If the device misses parts, press <b>Slower</b>, or <b>Pause</b> and step with the arrows. <b>Done</b> closes the player.</li>
+        <li>Check every review page on the device. The device is the authority, not this page: its <b>Canonical digest</b> must match the coordinator's digest for the file. If it does not, stop and call.</li>
+      </ol>
+      <table class="guide">
+        <thead><tr><th>File</th><th>Device menu</th><th>Compare</th></tr></thead>
+        <tbody>
+          <tr><td><code>genesis-unsigned.json</code></td><td>7F: Sign Genesis Config</td><td>Every field, and the Canonical digest</td></tr>
+          <tr><td><code>devfund-unsigned.json</code></td><td>7F: Sign Devfund Config</td><td>The recipient (it receives the entire genesis reward), and the Canonical digest</td></tr>
+          <tr><td><code>root-&lt;ski&gt;.pem</code></td><td>7F: Cross-Certify Deputy, first scan</td><td>Your own Root ski</td></tr>
+          <tr><td>Deputy CSR <code>.pem</code></td><td>7F: Cross-Certify Deputy, second scan</td><td>The Deputy ski, confirmed with the Deputy by voice</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">Anything else is refused, including a Deputy certificate offered in place of a Root certificate.</p>
+    </article>
+  </div>
+
+  <h2>How the pin and the subject key id are made</h2>
+  <dl class="ids">
+    <dt>Verification key (vk)</dt>
+    <dd>The public half of an ML-DSA-65 key: 1952 bytes. A <code>.vk</code> file holds it as 3904 lowercase hex characters and a newline.</dd>
+    <dt>Pin</dt>
+    <dd>SHA-256 of the 1952 key bytes (the decoded bytes, not the hex text): 64 hex. Read it aloud by phone from the device's screen and compare it with the coordinator's record. A pin written in a file proves nothing: whoever could change the file could change the pin.</dd>
+    <dt>Subject key id (ski)</dt>
+    <dd>The first 20 bytes of the same hash, the pin's first 40 hex (RFC 7093 method 1), shown in groups of four. It names every file. A certificate's ski is that of the key it certifies. These are the values <code>sf-wallet-gov</code> prints.</dd>
+    <dt>Seed label</dt>
+    <dd>The device names a loaded phrase by the first 8 hex of its testnet Root ski at index 0. Check it before each step.</dd>
+  </dl>
+  <p>To recompute both from a <code>.vk</code> file:</p>
+  <pre><code>xxd -r -p &lt;ski&gt;.vk | sha256sum</code></pre>
+  <p>The output is the pin. Its first 40 hex characters are the ski, and must equal the file name.</p>
+
+  <h3>Which key names each file</h3>
+  <ul>
+    <li><code>&lt;ski&gt;.vk</code>: the key itself.</li>
+    <li><code>root-&lt;ski&gt;.pem</code>: the Root key it certifies (it signs its own certificate).</li>
+    <li><code>&lt;ski&gt;.genesis</code>, <code>&lt;ski&gt;.devfund</code>: the Root key that signed. The dev-fund definition is signed by the Root key, not the dev-fund key.</li>
+    <li><code>deputy-&lt;ski&gt;.pem</code>: the Root that issued it, not the Deputy. Each Root's certificate for the same Deputy has a different name.</li>
+  </ul>
+
+  <h2>Key index</h2>
+  <p>Every Root and dev-fund step on the device asks for the key index, <code>sf-wallet-gov</code>'s <code>--index</code>. Choose <b>Index 0 (default)</b>. The key is derived at <code>root/&lt;network&gt;/&lt;index&gt;/ml-dsa/v1</code> (dev-fund: <code>devfund/&lt;network&gt;/&lt;index&gt;/ml-dsa/v1</code>), so another index is a different key with a different ski. Use <b>Other index</b> only for a key that was made at that index; the device warns once and shows the index under the ski. Keep one phrase per Root key.</p>
+
+  <h2>How a file travels as QR</h2>
+  <ul>
+    <li>To the device: a JSON config goes byte for byte; a <code>.pem</code> goes as its DER bytes (the decoded base64).</li>
+    <li>From the device: each export is a small JSON envelope naming its kind, its file name and its content. The page checks the name against the content before it saves.</li>
+    <li>Both ways, the bytes are compressed and split into BBQr parts of at most 300 characters, one QR each. The player shows each for 1.2 s and loops, so a missed part comes round again.</li>
+  </ul>
+
+  <h2>Before a ceremony</h2>
+  <p>The footer shows this page's version, the commit it was built from. Record it, and check it is the one you were told to expect. The 7fchain ceremony runbooks are the source of truth: if this page disagrees with them, they win.</p>
+</section>
+
 <section id="from-device" hidden>
-  <p class="hint">Point the camera at the device's QR. Saves what the device exports: <code>&lt;ski&gt;.vk</code>, <code>root-&lt;ski&gt;.pem</code>, <code>&lt;ski&gt;.genesis</code>, <code>&lt;ski&gt;.devfund</code>, <code>deputy-&lt;ski&gt;.pem</code>.</p>
+  <p class="hint">Point the camera at the device's QR. Saves what the device exports: <code>&lt;ski&gt;.vk</code>, <code>root-&lt;ski&gt;.pem</code>, <code>&lt;ski&gt;.genesis</code>, <code>&lt;ski&gt;.devfund</code>, <code>deputy-&lt;ski&gt;.pem</code>. <a href="#start">How it works</a></p>
   <div id="status"></div>
   <div id="signal"></div>
   <div id="video-wrap">
@@ -48,7 +136,7 @@
 </section>
 
 <section id="to-device" hidden>
-  <p class="hint">Pick the file the device must scan: <code>genesis-unsigned.json</code>, <code>devfund-unsigned.json</code>, <code>root-&lt;ski&gt;.pem</code> or a Deputy CSR <code>.pem</code>. Nothing is uploaded; the file stays in this browser.</p>
+  <p class="hint">Pick the file the device must scan: <code>genesis-unsigned.json</code>, <code>devfund-unsigned.json</code>, <code>root-&lt;ski&gt;.pem</code> or a Deputy CSR <code>.pem</code>. Nothing is uploaded; the file stays in this browser. <a href="#start">How it works</a></p>
   <label id="dropZone" class="drop">
     <input type="file" id="sendFile" accept=".json,.pem,application/json,application/x-pem-file">
     <span>Choose a file, or drop it here</span>

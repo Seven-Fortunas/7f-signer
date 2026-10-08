@@ -1,10 +1,11 @@
-// Tab switching by URL hash (#from-device / #to-device), so a link can open
-// either direction. The camera runs only while "From device" is shown.
-const TABS = { "from-device": "tabFrom", "to-device": "tabTo" };
+// Tab switching by URL hash (#start / #from-device / #to-device), so a link
+// can open any of them; the bare URL opens Start. The camera runs only while
+// "From device" is shown.
+const TABS = { "start": "tabStart", "from-device": "tabFrom", "to-device": "tabTo" };
 
 function showTab() {
   const wanted = location.hash.slice(1);
-  const current = wanted in TABS ? wanted : "from-device";
+  const current = wanted in TABS ? wanted : "start";
   for (const [id, tabId] of Object.entries(TABS)) {
     const on = id === current;
     document.getElementById(id).hidden = !on;
@@ -17,6 +18,7 @@ function showTab() {
     window.ScanTab.start();
   } else {
     window.ScanTab.stop();
+    if (current === "start") window.SendTab.stop();
   }
 }
 
