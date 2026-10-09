@@ -1,1 +1,1 @@
-window.SF7_TOOL_VERSION = "f0806e3 (2026-10-08)";
+window.SF7_TOOL_VERSION = "278005a (2026-10-08)";
