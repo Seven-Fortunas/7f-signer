@@ -59,18 +59,17 @@ async function pin(hexText) {
   return sha256OfHex(hexText);
 }
 
-// vkSummary(): a <ski>.txt record of one key for the holder -- the bundle
-// above with a reminder that the pin is only a check when confirmed over a
-// second channel (the .vk itself must stay bare hex for 7fchain's tools).
+// vkSummary(): a <ski>.txt record of one key for the holder: the bundle,
+// its role, and for a Root key the reminder that the root pin is only a check
+// when confirmed over a second channel (the .vk itself stays bare hex).
 async function vkSummary(hexText, role) {
-  const bundle = await vkBundle(hexText);
+  const bundle = await vkBundle(hexText, role);
   if (bundle === null) return null;
   const id = bundle.split("\n")[0].slice("subject key id: ".length);
-  const roleLine = role ? `role: ${role}\n` : "";
-  return {
-    name: `${id}.txt`,
-    text: "# Record only. Send the .vk file; confirm the pin by phone -- a pin in a file proves nothing.\n" + roleLine + bundle,
-  };
+  const header = role === "root"
+    ? "# Record only. Send the .vk file; confirm the root pin by phone -- a pin in a file proves nothing.\n"
+    : "# Record only. Send the .vk file.\n";
+  return { name: `${id}.txt`, text: header + `role: ${role || "unknown"}\n` + bundle };
 }
 
 // ─── Export envelopes from the device (models/sevenf/export_envelope.py) ───
@@ -211,9 +210,12 @@ function spkiMlDsa65Key(der, spki) {
   return der.slice(bits.start + 1, bits.end);
 }
 
-// Root and dev-fund keys are both <ski>.vk; the role says which outbox
-// (and which coordinator inbox) a file belongs in.
-const VK_KINDS = new Map([["root-vk", "governance/root/outbox"], ["devfund-vk", "governance/devfund/outbox"]]);
+// Where sf-wallet-gov writes each file (main.rs governance dir,
+// sign_ops.rs): ~/7fchain/<network>/governance/<role>/outbox. Root and
+// dev-fund keys are both <ski>.vk, so the role is what says which folder;
+// certificates and signatures are the Root's own output.
+const ROOT_OUTBOX = "~/7fchain/<network>/governance/root/outbox";
+const VK_KINDS = new Map([["root-vk", ROOT_OUTBOX], ["devfund-vk", "~/7fchain/<network>/governance/devfund/outbox"]]);
 const SIGNATURE_KINDS = new Map([["genesis-sig", "genesis"], ["devfund-sig", "devfund"]]);
 
 async function inspectExport(jsonText) {
@@ -244,8 +246,10 @@ async function inspectExport(jsonText) {
     if (!vk) return fail("body is not an ML-DSA-65 certificate");
     if (derToPem(der) !== obj.body) return fail("body is not canonical PEM (64-character lines, trailing newline)");
     const vkHex = bytesToHexStr(vk);
-    out.pin = await pin(vkHex);
-    out.ski = out.pin.slice(0, 40);
+    const digest = await pin(vkHex);
+    out.ski = digest.slice(0, 40);
+    out.pin = obj.kind === "root-cert" ? digest : null;   // the root pin is a Root key's only
+    out.folder = ROOT_OUTBOX;
     let expected;
     if (obj.kind === "root-cert") {
       expected = `root-${out.ski}.pem`;
@@ -263,8 +267,9 @@ async function inspectExport(jsonText) {
   if (vkFolder) {
     // A role-tagged verification key: exactly sf-wallet-gov's .vk bytes.
     if (!/^[0-9a-f]{3904}\n$/.test(obj.body)) return fail("body is not a verification key (3904 lowercase hex + newline)");
-    out.pin = await pin(obj.body.trim());
-    out.ski = out.pin.slice(0, 40);
+    const digest = await pin(obj.body.trim());
+    out.ski = digest.slice(0, 40);
+    out.pin = obj.kind === "root-vk" ? digest : null;     // derive-vk prints no pin for a dev-fund key
     out.folder = vkFolder;
     if (obj.file !== `${out.ski}.vk`) return fail(`file name ${obj.file} does not match the key (expected ${out.ski}.vk)`);
     return out;
@@ -278,6 +283,7 @@ async function inspectExport(jsonText) {
     const m = new RegExp(`^([0-9a-f]{40})\\.${sigExt}$`).exec(obj.file);
     if (!m) return fail(`file name ${obj.file} is not <subject key id>.${sigExt}`);
     out.ski = m[1];
+    out.folder = ROOT_OUTBOX;
     let sig;
     try {
       sig = JSON.parse(obj.body);
@@ -292,7 +298,6 @@ async function inspectExport(jsonText) {
       if (!/^[0-9a-f]{3904}$/.test(sig.signer_vk)) return fail("body's signer_vk is not a 1952-byte key");
       const keyPin = await pin(sig.signer_vk);
       if (keyPin.slice(0, 40) !== out.ski) return fail(`file name ${obj.file} does not match the embedded key`);
-      out.pin = keyPin;
     }
     if (JSON.stringify(sig, null, 2) + "\n" !== obj.body) return fail("body is not canonical (sf-wallet-gov's pretty JSON plus a newline)");
     return out;
@@ -311,12 +316,15 @@ function saveMethod({ hasSavePicker, canShareFiles }) {
 }
 
 // vkBundle(): everything a member hands the coordinator for one key, in one
-// paste, labelled the way sf-wallet-gov prints it. null for non-hex input.
-async function vkBundle(hexText) {
+// paste, labelled the way sf-wallet-gov prints it: the "root pin" only for a
+// Root key (sign_ops.rs sign-root-cert; derive-vk prints none). null for
+// non-hex input.
+async function vkBundle(hexText, role) {
   const digest = await sha256OfHex(hexText);
   if (digest === null) return null;
   const id = digest.slice(0, 40);
-  return `subject key id: ${id}\npin: ${digest}\nfile: ${id}.vk\nvk: ${String(hexText).trim().toLowerCase()}\n`;
+  const pinLine = role === "root" ? `root pin: ${digest}\n` : "";
+  return `subject key id: ${id}\n${pinLine}file: ${id}.vk\nvk: ${String(hexText).trim().toLowerCase()}\n`;
 }
 
 // RFC 4648 base32 decode, matching Python's base64.b32decode (uppercase

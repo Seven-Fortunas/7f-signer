@@ -29,8 +29,8 @@
       <ol>
         <li>Open <a href="#from-device">From device</a> and allow the camera.</li>
         <li>Fill most of the camera view with the device's QR and hold steady. Parts arrive in any order; the grid turns green as they do.</li>
-        <li>Compare what the page shows with the device's screen: the subject key id and, for a key, the pin.</li>
-        <li>Press <b>Save</b>. Keep Root and dev-fund files in separate folders; for a key the page says which. <b>NOT SAVED</b> means the file name did not match the content: scan again, never rename by hand.</li>
+        <li>Compare what the page shows with the device's screen: the subject key id and, for a Root key, the root pin.</li>
+        <li>Press <b>Save</b>. The page names the folder <code>sf-wallet-gov</code> uses, <code>~/7fchain/&lt;network&gt;/governance/root/outbox</code> or <code>…/devfund/outbox</code>; keep Root and dev-fund files apart. <b>NOT SAVED</b> means the file name did not match the content: scan again, never rename by hand.</li>
         <li><b>Save summary</b> (optional) writes <code>&lt;ski&gt;.txt</code>, a record for you. Send the file, not the summary.</li>
       </ol>
       <table class="guide">
@@ -41,7 +41,7 @@
           <tr><td>7F: Enroll Dev-fund (export VK)</td><td><code>&lt;ski&gt;.vk</code></td><td>Dev-fund</td></tr>
           <tr><td>7F: Sign Genesis Config</td><td><code>&lt;ski&gt;.genesis</code></td><td>Root</td></tr>
           <tr><td>7F: Sign Devfund Config</td><td><code>&lt;ski&gt;.devfund</code> (signed by the Root key)</td><td>Root</td></tr>
-          <tr><td>7F: Cross-Certify Deputy</td><td><code>deputy-&lt;Root ski&gt;.pem</code></td><td>Deputy</td></tr>
+          <tr><td>7F: Cross-Certify Deputy</td><td><code>deputy-&lt;Root ski&gt;.pem</code></td><td>Root</td></tr>
         </tbody>
       </table>
     </article>
@@ -69,20 +69,20 @@
     </article>
   </div>
 
-  <h2>How the pin and the subject key id are made</h2>
+  <h2>How the root pin and the subject key id are made</h2>
   <dl class="ids">
     <dt>Verification key (vk)</dt>
     <dd>The public half of an ML-DSA-65 key: 1952 bytes. A <code>.vk</code> file holds it as 3904 lowercase hex characters and a newline.</dd>
-    <dt>Pin</dt>
-    <dd>SHA-256 of the 1952 key bytes (the decoded bytes, not the hex text): 64 hex. Read it aloud by phone from the device's screen and compare it with the coordinator's record. A pin written in a file proves nothing: whoever could change the file could change the pin.</dd>
+    <dt>Root pin</dt>
+    <dd>SHA-256 of the 1952 key bytes (the decoded bytes, not the hex text): 64 hex. For a Root key only, as <code>sf-wallet-gov</code> prints it. Read it aloud by phone from the device's screen and compare it with the coordinator's record. A pin written in a file proves nothing: whoever could change the file could change the pin.</dd>
     <dt>Subject key id (ski)</dt>
-    <dd>The first 20 bytes of the same hash, the pin's first 40 hex (RFC 7093 method 1), shown in groups of four. It names every file. A certificate's ski is that of the key it certifies. These are the values <code>sf-wallet-gov</code> prints.</dd>
+    <dd>The first 20 bytes of the same hash, its first 40 hex (RFC 7093 method 1), for every key, shown in groups of four. It names every file. A certificate's ski is that of the key it certifies. These are the values <code>sf-wallet-gov</code> prints.</dd>
     <dt>Seed label</dt>
     <dd>The device names a loaded phrase by the first 8 hex of its testnet Root ski at index 0. Check it before each step.</dd>
   </dl>
   <p>To recompute both from a <code>.vk</code> file:</p>
   <pre><code>xxd -r -p &lt;ski&gt;.vk | sha256sum</code></pre>
-  <p>The output is the pin. Its first 40 hex characters are the ski, and must equal the file name.</p>
+  <p>The output is the hash (for a Root key, its root pin). Its first 40 hex characters are the ski, and must equal the file name.</p>
 
   <h3>Which key names each file</h3>
   <ul>
@@ -124,12 +124,11 @@
     <button id="copy" class="secondary" hidden>Copy result</button>
     <button id="copyVk" class="secondary" hidden>Copy VK</button>
     <button id="saveExport" hidden>Save</button>
-    <button id="saveVk" hidden>Save .vk</button>
     <button id="saveSummary" class="secondary" hidden>Save summary</button>
     <button id="copyAll" class="secondary" hidden>Copy all</button>
     <button id="copyId" class="secondary" hidden>Copy ID</button>
   </div>
-  <p id="vkNote" hidden>How the ids below are derived: pin = SHA-256 of the raw vk bytes
+  <p id="vkNote" hidden>How the ids below are derived: root pin = SHA-256 of the raw vk bytes
     (hex-decoded, not the hex text), 64 hex; subject key id = the first 20 bytes of that
     hash (the pin's first 40 hex), RFC 7093 method 1. Same values sf-wallet-gov prints.</p>
   <div id="result"></div>

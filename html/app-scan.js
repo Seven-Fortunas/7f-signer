@@ -11,7 +11,6 @@ const copyBtn = document.getElementById("copy");
 const copyVkBtn = document.getElementById("copyVk");
 const copyIdBtn = document.getElementById("copyId");
 const copyAllBtn = document.getElementById("copyAll");
-const saveVkBtn = document.getElementById("saveVk");
 const saveExportBtn = document.getElementById("saveExport");
 const saveSummaryBtn = document.getElementById("saveSummary");
 const vkNoteEl = document.getElementById("vkNote");
@@ -34,7 +33,6 @@ let lastResult = null; // { index, isNew, at }
 let lastVkText = null;
 let lastIdText = null;
 let lastBundleText = null;
-let lastFileName = null;
 let lastExport = null;  // a checked device export envelope: {file, body, ...}
 
 function recordDetection(found, now) {
@@ -154,10 +152,8 @@ async function renderResult(bytes) {
       // resultEl.textContent was ever set, with no visible error at all --
       // the scan looked complete but nothing displayed.
       try {
-        const [id, pinHex, bundle] = await Promise.all([
-          BBQrDecode.ski(text), BBQrDecode.pin(text), BBQrDecode.vkBundle(text),
-        ]);
-        if (id && pinHex && bundle) vkInfo = { id, pin: pinHex, bundle };
+        const [id, bundle] = await Promise.all([BBQrDecode.ski(text), BBQrDecode.vkBundle(text)]);
+        if (id && bundle) vkInfo = { id, bundle };
       } catch (e) {
         console.warn("subject key id / pin computation failed:", e.message);
         vkError = `(subject key id and pin unavailable: ${e.message} -- try a hard refresh)`;
@@ -177,15 +173,17 @@ async function renderResult(bytes) {
       "genesis-sig": "Genesis signature (Root key)",
       "devfund-sig": "Dev-fund definition signature (Root key)",
     }[exportInfo.kind] || exportInfo.kind;
-    const pinLine = exportInfo.pin ? `\nPin: ${exportInfo.pin}` : "";
+    const pinLine = exportInfo.pin ? `\nRoot pin: ${exportInfo.pin}` : "";
     const keyNote = exportInfo.kind.endsWith("-sig") && !exportInfo.pin
       ? "\nKey not embedded: the coordinator pairs this with <subject key id>.vk." : "";
     const idLabel = exportInfo.kind.endsWith("-sig") ? "Signed by subject key id" : "Subject key id";
-    const folderLine = exportInfo.folder ? `\nBelongs in: ${exportInfo.folder} (not the other role's folder)` : "";
+    const folderLine = exportInfo.folder ? `\nBelongs in: ${exportInfo.folder}` : "";
     const issuerLine = exportInfo.issuer_ski ? `\nIssued by Root subject key id: ${exportInfo.issuer_ski}` : "";
     resultEl.textContent = `${label}\nFile: ${exportInfo.file}\n${idLabel}: ${exportInfo.ski}${folderLine}${issuerLine}${pinLine}${keyNote}\n\n${text}`;
   } else if (vkInfo) {
-    resultEl.textContent = `Subject key id: ${vkInfo.id}\nPin: ${vkInfo.pin}\nFile: ${vkInfo.id}.vk\n\n${text}`;
+    // A bare key carries no role, so it is shown but not saved: as a .vk it
+    // could land in the wrong role's folder. The device exports keys tagged.
+    resultEl.textContent = `Subject key id: ${vkInfo.id}\nNo role: not saved. Export it from the device's 7F: Enroll menu.\n\n${text}`;
   } else {
     resultEl.textContent = vkError ? `${vkError}\n\n${text}` : text;
   }
@@ -207,10 +205,7 @@ async function renderResult(bytes) {
     lastBundleText = vkInfo.bundle;
     copyBtn.hidden = true;
     vkNoteEl.hidden = false;
-    lastFileName = `${vkInfo.id}.vk`;
-    saveVkBtn.hidden = false;
-    saveVkBtn.textContent = `Save ${lastFileName}`;
-    saveSummaryBtn.hidden = false;
+    saveSummaryBtn.hidden = true;
     copyAllBtn.hidden = false;
     copyAllBtn.textContent = "Copy all";
     copyVkBtn.hidden = false;
@@ -222,7 +217,6 @@ async function renderResult(bytes) {
     copyBtn.textContent = "Copy result";
     vkNoteEl.hidden = true;
     copyAllBtn.hidden = true;
-    saveVkBtn.hidden = true;
     saveSummaryBtn.hidden = true;
     copyVkBtn.hidden = true;
     copyIdBtn.hidden = true;
@@ -273,7 +267,6 @@ document.getElementById("reset").addEventListener("click", () => {
   copyVkBtn.hidden = true;
   copyIdBtn.hidden = true;
   copyAllBtn.hidden = true;
-  saveVkBtn.hidden = true;
   saveSummaryBtn.hidden = true;
   saveExportBtn.hidden = true;
   lastExport = null;
@@ -281,7 +274,6 @@ document.getElementById("reset").addEventListener("click", () => {
   lastVkText = null;
   lastIdText = null;
   lastBundleText = null;
-  lastFileName = null;
 });
 
 // For a long hex value (e.g. a 1952-byte ML-DSA-65 verification key, 3904 hex
@@ -357,12 +349,10 @@ function wireSaveButton(btn, getLabel, getFile) {
   });
 }
 
-wireSaveButton(saveVkBtn, () => (lastFileName ? `Save ${lastFileName}` : "Save .vk"), async () => ({ name: lastFileName, text: lastVkText }));
 wireSaveButton(saveExportBtn, () => (lastExport ? `Save ${lastExport.file}` : "Save"), async () => ({ name: lastExport.file, text: lastExport.body }));
-wireSaveButton(saveSummaryBtn, () => "Save summary", () => (
-  lastExport && lastExport.folder
-    ? BBQrDecode.vkSummary(lastExport.body, lastExport.kind.replace("-vk", ""))
-    : BBQrDecode.vkSummary(lastVkText)));
+// Shown only for a role-tagged key export (lastExport.folder).
+wireSaveButton(saveSummaryBtn, () => "Save summary", () =>
+  BBQrDecode.vkSummary(lastExport.body, lastExport.kind.replace("-vk", "")));
 
 // Continuous autofocus and torch are both device-gated (iPhones and most
 // laptop webcams expose neither) -- every call here is guarded by a real
