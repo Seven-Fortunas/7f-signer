@@ -19,6 +19,7 @@ const QR_LIGHT = "#bdbdbd";                       // the proven slideshow backgr
 const QR_DARK = "#000";
 
 let prepared = null;     // the checked file: {label, parts, ...}
+let lastFile = null;     // re-checked when the receiver changes
 let matrices = [];       // QR module rows per part
 let partIndex = 0;
 let intervalIdx = 2;     // 1200 ms, the slideshow's proven default
@@ -40,20 +41,31 @@ function showRefusal(name, message) {
   sendInfoEl.className = "refused";
 }
 
+// Who scans the QR: a SeedSigner, or this page on another computer (an
+// airgap laptop running sf-wallet-gov: CentCom and registrar files).
+function sendTarget() {
+  const checked = document.querySelector('input[name="sendTarget"]:checked');
+  return checked ? checked.value : "device";
+}
+
 function showPrepared(p) {
+  const toComputer = p.target === "computer";
   const dl = el("dl");
   const rows = [
     ["File", p.name],
-    ["On the device", p.menu],
+    [toComputer ? "On the other computer" : "On the device", p.menu],
     ["QR parts", String(p.parts.length)],
     ...p.fields,
   ];
   for (const [k, v] of rows) dl.append(el("dt", k), el("dd", v));
-  const check = p.kind.endsWith("-config")
-    ? "Check every field on the device. Compare its Canonical digest with the coordinator's before you confirm."
-    : "Check the subject key id on the device against the one read to you by phone.";
+  const check = toComputer
+    ? "The other computer shows the same subject key id when it has scanned the file. Check it there before you use the file."
+    : p.kind.endsWith("-config")
+      ? "Check every field on the device. Compare its Canonical digest with the coordinator's before you confirm."
+      : "Check the subject key id on the device against the one read to you by phone.";
   sendInfoEl.replaceChildren(el("h2", p.label), dl, el("p", check, "check"));
   sendInfoEl.className = "";
+  showQrBtn.textContent = toComputer ? "Show QR to the other computer" : "Show QR to the device";
   showQrBtn.hidden = false;
 }
 
@@ -61,6 +73,8 @@ let loadSeq = 0;  // only the most recently chosen file may land
 
 async function loadFile(file) {
   if (!file) return;
+  lastFile = file;
+  const target = sendTarget();
   const seq = ++loadSeq;
   stopPlayer();
   prepared = null;
@@ -72,7 +86,7 @@ async function loadFile(file) {
     result = { error: `the file is ${file.size} bytes; ceremony files are under ${BBQrEncode.MAX_FILE_BYTES}` };
   } else {
     try {
-      result = await BBQrEncode.prepareFile(file.name, new Uint8Array(await file.arrayBuffer()));
+      result = await BBQrEncode.prepareFile(file.name, new Uint8Array(await file.arrayBuffer()), target);
     } catch (e) {
       result = { error: `could not read the file: ${e.message}` };
     }
@@ -83,13 +97,16 @@ async function loadFile(file) {
     return;
   }
   stopPlayer();
-  prepared = result;
+  prepared = { ...result, target };
   matrices = result.parts.map(BBQrEncode.qrMatrix);
   partIndex = 0;
-  showPrepared(result);
+  showPrepared(prepared);
 }
 
 sendFileEl.addEventListener("change", () => loadFile(sendFileEl.files[0]));
+for (const radio of document.querySelectorAll('input[name="sendTarget"]')) {
+  radio.addEventListener("change", () => { if (lastFile) loadFile(lastFile); });
+}
 dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("over"); });
 dropZone.addEventListener("dragleave", () => dropZone.classList.remove("over"));
 dropZone.addEventListener("drop", (e) => {

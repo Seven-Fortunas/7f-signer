@@ -20,7 +20,7 @@
 
 <main>
 <section id="start" hidden>
-  <p class="lead">This page moves ceremony files between this computer or phone and a 7F SeedSigner by animated QR codes. It runs entirely in this browser: nothing is uploaded.</p>
+  <p class="lead">This page moves ceremony files by animated QR codes between this computer or phone and a 7F SeedSigner, or another computer running this page. It runs entirely in this browser: nothing is uploaded.</p>
 
   <div class="cards">
     <article class="card">
@@ -66,6 +66,25 @@
       </table>
       <p class="hint">Anything else is refused, including a Deputy certificate offered in place of a Root certificate.</p>
     </article>
+
+    <article class="card">
+      <h2>Between two computers</h2>
+      <p class="when">For CentCom and the registrar, while they sign with <code>sf-wallet-gov</code> on a laptop instead of a SeedSigner. Open this page on both computers.</p>
+      <ol>
+        <li>Sending computer: open <a href="#to-device">To device</a>, choose <b>Another computer</b>, pick the file and press <b>Show QR to the other computer</b>.</li>
+        <li>Receiving computer: open <a href="#from-device">From device</a> and point its camera at that screen.</li>
+        <li>Check that both screens show the same subject key id (for a request, also check it with its holder by voice), then <b>Save</b>.</li>
+      </ol>
+      <table class="guide">
+        <thead><tr><th>File</th><th>From → to</th><th>Then</th></tr></thead>
+        <tbody>
+          <tr><td><code>centcom-&lt;Deputy ski&gt;.pem</code></td><td>Airgap → online</td><td>Made by <code>sign-centcom-cert</code>. Send it to the coordinator for the public repo.</td></tr>
+          <tr><td><code>registrar-csr.pem</code></td><td>Registrar server → airgap</td><td>CentCom signs it with <code>sign-issuer-cert --purpose miner</code>.</td></tr>
+          <tr><td><code>x509-miner-issuing-ca.pem</code></td><td>Airgap → registrar server</td><td><code>sf-registrar install</code> on the server.</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">Root and Deputy certificates and any 7fchain request travel the same way. The page refuses a file whose name does not match its content; <code>sf-wallet-gov</code> and <code>sf-registrar</code> check the signatures.</p>
+    </article>
   </div>
 
   <h2>How the root pin and the subject key id are made</h2>
@@ -89,6 +108,8 @@
     <li><code>root-&lt;ski&gt;.pem</code>: the Root key it certifies (it signs its own certificate).</li>
     <li><code>&lt;ski&gt;.genesis</code>, <code>&lt;ski&gt;.devfund</code>: the Root key that signed. The dev-fund definition is signed by the Root key, not the dev-fund key.</li>
     <li><code>deputy-&lt;ski&gt;.pem</code>: the Root that issued it, not the Deputy. Each Root's certificate for the same Deputy has a different name.</li>
+    <li><code>centcom-&lt;ski&gt;.pem</code>: the Deputy that issued it.</li>
+    <li><code>&lt;role&gt;-&lt;ski&gt;-csr.pem</code>: the key asking to be certified. A registrar's request is <code>registrar-csr.pem</code>, and its certificate <code>x509-&lt;purpose&gt;-issuing-ca.pem</code>.</li>
   </ul>
 
   <h2>Key index</h2>
@@ -97,7 +118,7 @@
   <h2>How a file travels as QR</h2>
   <ul>
     <li>To the device: a JSON config goes byte for byte; a <code>.pem</code> goes as its DER bytes (the decoded base64).</li>
-    <li>From the device: each export is a small JSON envelope naming its kind, its file name and its content. The page checks the name against the content before it saves.</li>
+    <li>From the device, or between two computers: each file is a small JSON envelope naming its kind, its file name and its content. The page checks the name against the content before it saves.</li>
     <li>Both ways, the bytes are compressed and split into BBQr parts of at most 300 characters, one QR each. The player shows each for 1.2 s and loops, so a missed part comes round again.</li>
   </ul>
 
@@ -106,7 +127,7 @@
 </section>
 
 <section id="from-device" hidden>
-  <p class="hint">Point the camera at the device's QR. Saves what the device exports: <code>&lt;ski&gt;.vk</code>, <code>root-&lt;ski&gt;.pem</code>, <code>&lt;ski&gt;.genesis</code>, <code>&lt;ski&gt;.devfund</code>, <code>deputy-&lt;ski&gt;.pem</code>. <a href="#start">How it works</a></p>
+  <p class="hint">Point the camera at the device's QR. Saves what the device exports: <code>&lt;ski&gt;.vk</code>, <code>root-&lt;ski&gt;.pem</code>, <code>&lt;ski&gt;.genesis</code>, <code>&lt;ski&gt;.devfund</code>, <code>deputy-&lt;ski&gt;.pem</code>; from another computer, also CentCom and registrar files. <a href="#start">How it works</a></p>
   <div id="status"></div>
   <div id="signal"></div>
   <div id="video-wrap">
@@ -134,7 +155,12 @@
 </section>
 
 <section id="to-device" hidden>
-  <p class="hint">Pick the file the device must scan: <code>genesis-unsigned.json</code>, <code>devfund-unsigned.json</code>, <code>root-&lt;ski&gt;.pem</code> or a Deputy CSR <code>.pem</code>. Nothing is uploaded; the file stays in this browser. <a href="#start">How it works</a></p>
+  <p class="hint">Pick the file the device must scan: <code>genesis-unsigned.json</code>, <code>devfund-unsigned.json</code>, <code>root-&lt;ski&gt;.pem</code> or a Deputy CSR <code>.pem</code>. For another computer: a certificate or request <code>.pem</code>. Nothing is uploaded; the file stays in this browser. <a href="#start">How it works</a></p>
+  <fieldset class="target">
+    <legend>Send to</legend>
+    <label><input type="radio" name="sendTarget" value="device" checked> A SeedSigner</label>
+    <label><input type="radio" name="sendTarget" value="computer"> Another computer (CentCom, registrar)</label>
+  </fieldset>
   <label id="dropZone" class="drop">
     <input type="file" id="sendFile" accept=".json,.pem,application/json,application/x-pem-file">
     <span>Choose a file, or drop it here</span>

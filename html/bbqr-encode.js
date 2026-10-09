@@ -156,7 +156,13 @@ async function skiOf(vk) {
 // What the device would scan for this file, or {error}. Mirrors
 // file_to_bbqr.payload_for: JSON goes byte-for-byte as BBQr 'J'; a
 // CERTIFICATE or CERTIFICATE REQUEST PEM goes as its DER, as 'B'.
-async function prepareFile(name, bytes) {
+//
+// target "computer": the file goes to this page on another computer (an
+// airgap laptop running sf-wallet-gov), wrapped in the export envelope the
+// device uses, under the name 7fchain gives it. The receiving page checks
+// the name against the content again before it saves.
+async function prepareFile(name, bytes, target = "device") {
+  if (target === "computer") return prepareForComputer(name, bytes);
   if (bytes.length === 0) return { error: "the file is empty" };
   if (bytes.length > MAX_FILE_BYTES) return { error: `the file is ${bytes.length} bytes; ceremony files are under ${MAX_FILE_BYTES}` };
   if (!bytes.every((b) => b < 0x80)) return { error: "not a ceremony file (it is not plain text)" };
@@ -201,12 +207,69 @@ async function prepareFile(name, bytes) {
       fields, name, fileType: "B", payload: pem.der, parts: encodeParts(pem.der, "B"),
     };
   }
-  const vk = BBQrDecode.csrSubjectVk(pem.der);
-  if (!vk) return { error: "not an ML-DSA-65 certificate request" };
+  const request = await BBQrDecode.identifyRequest(pem.der);
+  if (request.error) return { error: request.error };
+  // The requester types this name, so it proves nothing, but a registrar's or
+  // CentCom's request offered here by mistake shows up in it.
+  const fields = [["Deputy subject key id (confirm by voice)", groupHex(request.ski)]];
+  if (request.requested_name) fields.push(["Requested name (typed by the requester)", request.requested_name]);
   return {
     kind: "deputy-csr", label: "Deputy certificate request", menu: "7F: Cross-Certify Deputy (second scan)",
-    fields: [["Deputy subject key id (confirm by voice)", groupHex(await skiOf(vk))]],
+    fields,
     name, fileType: "B", payload: pem.der, parts: encodeParts(pem.der, "B"),
+  };
+}
+
+const COMPUTER_LABELS = {
+  "root-cert": "Root certificate",
+  "deputy-cert": "Deputy certificate",
+  "centcom-cert": "CentCom certificate",
+  "issuing-ca-cert": "Registrar (issuing CA) certificate",
+  "csr": "Certificate request",
+};
+
+async function prepareForComputer(name, bytes) {
+  if (bytes.length === 0) return { error: "the file is empty" };
+  if (bytes.length > MAX_FILE_BYTES) return { error: `the file is ${bytes.length} bytes; ceremony files are under ${MAX_FILE_BYTES}` };
+  if (!bytes.every((b) => b < 0x80)) return { error: "not a ceremony file (it is not plain text)" };
+  const text = new TextDecoder().decode(bytes);
+  if (text.trimStart().startsWith("{")) return { error: "a config goes to the SeedSigner only: choose SeedSigner above" };
+  let pem;
+  try {
+    pem = pemBody(text);
+  } catch (e) {
+    return { error: e.message };
+  }
+  if (!pem) return { error: "not a certificate or certificate request .pem" };
+
+  const fields = [];
+  let file;
+  let id;
+  if (pem.label === "CERTIFICATE") {
+    id = await BBQrDecode.identifyCertificate(pem.der);
+    if (id.error) return { error: id.error };
+    file = id.names[0];
+    if (id.names.includes(name)) file = name;
+    fields.push(["Subject key id", groupHex(id.ski)]);
+    if (id.issuer_ski) fields.push(["Issued by subject key id", groupHex(id.issuer_ski)]);
+    if (id.purpose) fields.push(["Purpose", id.purpose]);
+    if (id.network) fields.push(["Network", id.network]);
+  } else {
+    id = await BBQrDecode.identifyRequest(pem.der);
+    if (id.error) return { error: id.error };
+    const named = /[0-9a-f]{40}/.exec(name);
+    if (named && named[0] !== id.ski) return { error: `file name ${name} does not match the request's key (subject key id ${id.ski})` };
+    file = id.file;
+    fields.push(["Subject key id (confirm by voice)", groupHex(id.ski)]);
+    if (id.requested_name) fields.push(["Requested name (typed by the requester)", id.requested_name]);
+  }
+  if (file !== name) fields.push(["Note", `sent as ${file}, 7fchain's name for it (this file was ${name})`]);
+  const body = BBQrDecode.derToPem(pem.der, pem.label);
+  const envelope = new TextEncoder().encode(JSON.stringify({ sf7_export: 1, kind: id.kind, file, body }));
+  return {
+    kind: id.kind, label: COMPUTER_LABELS[id.kind], menu: "This page on the other computer: From device",
+    fields: [["Saved there as", file], ...fields],
+    name: file, fileType: "J", payload: envelope, parts: encodeParts(envelope, "J"),
   };
 }
 

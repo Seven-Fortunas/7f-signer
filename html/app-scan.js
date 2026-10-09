@@ -170,16 +170,25 @@ async function renderResult(bytes) {
       "devfund-vk": "DEV-FUND verification key",
       "root-cert": "Root certificate",
       "deputy-cert": "Deputy certificate",
+      "centcom-cert": "CentCom certificate",
+      "issuing-ca-cert": "Registrar (issuing CA) certificate",
+      "csr": "Certificate request",
       "genesis-sig": "Genesis signature (Root key)",
       "devfund-sig": "Dev-fund definition signature (Root key)",
     }[exportInfo.kind] || exportInfo.kind;
     const pinLine = exportInfo.pin ? `\nRoot pin: ${exportInfo.pin}` : "";
     const keyNote = exportInfo.kind.endsWith("-sig") && !exportInfo.pin
       ? "\nKey not embedded: the coordinator pairs this with <subject key id>.vk." : "";
-    const idLabel = exportInfo.kind.endsWith("-sig") ? "Signed by subject key id" : "Subject key id";
-    const folderLine = exportInfo.folder ? `\nBelongs in: ${exportInfo.folder}` : "";
-    const issuerLine = exportInfo.issuer_ski ? `\nIssued by Root subject key id: ${exportInfo.issuer_ski}` : "";
-    resultEl.textContent = `${label}\nFile: ${exportInfo.file}\n${idLabel}: ${exportInfo.ski}${folderLine}${issuerLine}${pinLine}${keyNote}\n\n${text}`;
+    const idLabel = exportInfo.kind.endsWith("-sig") ? "Signed by subject key id"
+      : exportInfo.kind === "csr" ? "Subject key id (confirm by voice)" : "Subject key id";
+    const folderLine = exportInfo.folder ? `\nBelongs in: ${exportInfo.folder}`
+      : exportInfo.next ? `\nNext: ${exportInfo.next}` : "";
+    const issuerRole = { "deputy-cert": "Root ", "centcom-cert": "Deputy ", "issuing-ca-cert": "CentCom " }[exportInfo.kind] || "";
+    const issuerLine = exportInfo.issuer_ski ? `\nIssued by ${issuerRole}subject key id: ${exportInfo.issuer_ski}` : "";
+    const purposeLine = exportInfo.purpose ? `\nPurpose: ${exportInfo.purpose}` : "";
+    const networkLine = exportInfo.network ? `\nNetwork: ${exportInfo.network}` : "";
+    const nameLine = exportInfo.requested_name ? `\nRequested name (typed by the requester): ${exportInfo.requested_name}` : "";
+    resultEl.textContent = `${label}\nFile: ${exportInfo.file}\n${idLabel}: ${exportInfo.ski}${nameLine}${purposeLine}${networkLine}${folderLine}${issuerLine}${pinLine}${keyNote}\n\n${text}`;
   } else if (vkInfo) {
     // A bare key carries no role, so it is shown but not saved: as a .vk it
     // could land in the wrong role's folder. The device exports keys tagged.
@@ -222,7 +231,7 @@ async function renderResult(bytes) {
     copyIdBtn.hidden = true;
   }
   // A role-tagged vk also offers the summary record, with its role.
-  if (lastExport && lastExport.folder) saveSummaryBtn.hidden = false;
+  if (lastExport && lastExport.kind.endsWith("-vk")) saveSummaryBtn.hidden = false;
 }
 
 function handleDecodedText(text, now) {

@@ -85,25 +85,26 @@ function bytesToHexStr(bytes) {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function pemCertToDer(pem) {
-  const m = /^-----BEGIN CERTIFICATE-----\n([A-Za-z0-9+/=\n]+)-----END CERTIFICATE-----\n?$/.exec(String(pem));
-  if (!m) return null;
-  try {
-    const bin = atob(m[1].replace(/\n/g, ""));
-    return Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  } catch (e) {
-    return null;  // malformed base64
-  }
-}
-
-// PEM exactly as sf-wallet-gov (and the device's der_to_pem) writes it:
-// 64-character lines and a trailing newline.
-function derToPem(der) {
+// PEM exactly as sf-wallet-gov, sf-registrar (and the device's der_to_pem)
+// write it: 64-character lines and a trailing newline.
+function derToPem(der, label = "CERTIFICATE") {
   let bin = "";
   for (const b of der) bin += String.fromCharCode(b);
   const b64 = btoa(bin);
   const lines = b64.match(/.{1,64}/g) || [];
-  return ["-----BEGIN CERTIFICATE-----", ...lines, "-----END CERTIFICATE-----"].join("\n") + "\n";
+  return [`-----BEGIN ${label}-----`, ...lines, `-----END ${label}-----`].join("\n") + "\n";
+}
+
+// A certificate or request PEM, read leniently ({label, der} or null); the
+// caller compares it with derToPem to insist on the canonical bytes.
+function pemDecode(text) {
+  const m = /^-----BEGIN (CERTIFICATE|CERTIFICATE REQUEST)-----\s*([A-Za-z0-9+/=\s]+?)\s*-----END \1-----\s*$/.exec(String(text));
+  if (!m) return null;
+  try {
+    return { label: m[1], der: Uint8Array.from(atob(m[2].replace(/\s+/g, "")), (c) => c.charCodeAt(0)) };
+  } catch (e) {
+    return null;  // malformed base64
+  }
 }
 
 // Minimal DER reader: {tag, off (of the tag), start, end} of the TLV at `off`.
@@ -210,6 +211,95 @@ function spkiMlDsa65Key(der, spki) {
   return der.slice(bits.start + 1, bits.end);
 }
 
+const OID_COMMON_NAME = [0x06, 0x03, 0x55, 0x04, 0x03];  // 2.5.4.3
+const OID_ORG_UNIT = [0x06, 0x03, 0x55, 0x04, 0x0b];     // 2.5.4.11: the network, in a 7fchain CA name
+
+// One attribute of an X.501 Name (SEQUENCE OF SET OF {oid, string}), or null
+// if it is absent, repeated, or not plain printable ASCII: these are shown
+// on screen, so a newline or a direction mark could fake a line.
+function nameField(der, name, oidBytes) {
+  if (!name || name.tag !== 0x30) return null;
+  const found = [];
+  for (const set of derChildren(der, name) || []) {
+    for (const atv of derChildren(der, set) || []) {
+      const parts = derChildren(der, atv);
+      if (!parts || parts.length !== 2) continue;
+      const oid = der.slice(parts[0].off, parts[0].end);
+      if (oid.length === oidBytes.length && oidBytes.every((x, i) => oid[i] === x)) found.push(parts[1]);
+    }
+  }
+  if (found.length !== 1 || ![0x0c, 0x13, 0x16].includes(found[0].tag)) return null;  // UTF8, Printable, IA5
+  const value = new TextDecoder().decode(der.slice(found[0].start, found[0].end));
+  return /^[\x20-\x7e]{1,128}$/.test(value) ? value : null;
+}
+
+// The purposes sign-issuer-cert stamps into an issuing CA's subject
+// (x509_ceremony IssuingPurpose::label) and the --purpose name it files it
+// under (wire_name; "session" is parse()'s alias for non-mining-node).
+const ISSUING_PURPOSES = new Map([
+  ["PQComms Server", "pqcomms-server"], ["PQComms Client", "pqcomms-client"],
+  ["Node Session", "non-mining-node"], ["Miner", "miner"],
+  ["L2 Sequencer", "l2-sequencer"], ["L2 Verifier", "l2-verifier"], ["L2 Rechecker", "l2-rechecker"],
+]);
+
+// What a 7fchain CA certificate is, read from its subject (x509_ceremony's
+// names: the issuer signed them), and the names sf-wallet-gov files it under.
+// The page verifies no signature: sf-wallet-gov and sf-registrar do, on use.
+async function identifyCertificate(der) {
+  const vk = certSubjectVk(der);
+  if (!vk) return { error: "not an ML-DSA-65 certificate" };
+  const ski = (await pin(bytesToHexStr(vk))).slice(0, 40);
+  const subject = tbsFields(der)[4];
+  const cn = nameField(der, subject, OID_COMMON_NAME);
+  const network = nameField(der, subject, OID_ORG_UNIT);
+  const aki = certAuthorityKeyId(der);
+  if (cn === `Seven Fortunas Root CA ${ski.slice(0, 8)}`) {
+    if (aki && aki !== ski) return { error: `a certificate issued by ${aki}, not a Root self-certificate` };
+    return { kind: "root-cert", ski, network, issuer_ski: null, names: [`root-${ski}.pem`] };
+  }
+  if (!aki || aki.length !== 40) return { error: "certificate has no 20-byte AuthorityKeyIdentifier" };
+  const out = { ski, network, issuer_ski: aki };
+  // A Deputy's and a CentCom's certificate are each named for the key that issued them.
+  if (cn === "Seven Fortunas Deputy CA") return { ...out, kind: "deputy-cert", names: [`deputy-${aki}.pem`] };
+  if (cn === "Seven Fortunas CentCom CA") return { ...out, kind: "centcom-cert", names: [`centcom-${aki}.pem`] };
+  const m = cn && /^Seven Fortunas (.+) Issuing CA ([0-9a-f]{8})$/.exec(cn);
+  const purpose = m && m[2] === ski.slice(0, 8) && ISSUING_PURPOSES.get(m[1]);
+  if (purpose) {
+    const names = [`x509-${purpose}-issuing-ca.pem`];
+    if (purpose === "non-mining-node") names.push("x509-session-issuing-ca.pem");
+    return { ...out, kind: "issuing-ca-cert", purpose, names };
+  }
+  return { error: `not a Seven Fortunas CA certificate (subject ${JSON.stringify(cn)})` };
+}
+
+// A PKCS#10 request and the one name it travels under. create-csr names its
+// subject "<role> <root_id>" (root_id: the ski's first 20 hex) and writes
+// <role>-<ski>-csr.pem; when the id in the name is this key's, the role is
+// taken from it. Any other subject is free text typed into sf-registrar csr,
+// which writes registrar-csr.pem. So a Deputy's or CentCom's request can never
+// pass as a registrar's, nor one role's as another's.
+async function identifyRequest(der) {
+  const vk = csrSubjectVk(der);
+  if (!vk) return { error: "not an ML-DSA-65 certificate request" };
+  const info = derChildren(der, derChildren(der, readTlv(der, 0))[0]);
+  const ski = (await pin(bytesToHexStr(vk))).slice(0, 40);
+  const requestedName = nameField(der, info[1], OID_COMMON_NAME);
+  const m = requestedName && /^([a-z][a-z0-9-]{0,39}) ([0-9a-f]{20})$/.exec(requestedName);
+  const role = m && m[2] === ski.slice(0, 20) ? m[1] : null;
+  return {
+    kind: "csr", ski, role, requested_name: requestedName,
+    file: role ? `${role}-${ski}-csr.pem` : "registrar-csr.pem",
+  };
+}
+
+// The inbox sf-wallet-gov reads a request from: its signer's.
+function requestInbox(role) {
+  if (role === "deputy") return "root/inbox";
+  if (role === "centcom") return "deputy/inbox";
+  if (!role || role.endsWith("-registrar")) return "centcom/inbox";
+  return null;
+}
+
 // Where sf-wallet-gov writes each file (main.rs governance dir,
 // sign_ops.rs): ~/7fchain/<network>/governance/<role>/outbox. Root and
 // dev-fund keys are both <ski>.vk, so the role is what says which folder;
@@ -217,6 +307,9 @@ function spkiMlDsa65Key(der, spki) {
 const ROOT_OUTBOX = "~/7fchain/<network>/governance/root/outbox";
 const VK_KINDS = new Map([["root-vk", ROOT_OUTBOX], ["devfund-vk", "~/7fchain/<network>/governance/devfund/outbox"]]);
 const SIGNATURE_KINDS = new Map([["genesis-sig", "genesis"], ["devfund-sig", "devfund"]]);
+// Certificates and requests: the device exports the first two; the page sends
+// all of them between two computers (sf-wallet-gov on an airgap laptop).
+const CA_FILE_KINDS = new Set(["root-cert", "deputy-cert", "centcom-cert", "issuing-ca-cert", "csr"]);
 
 async function inspectExport(jsonText) {
   let obj;
@@ -240,27 +333,35 @@ async function inspectExport(jsonText) {
   if (typeof obj.file !== "string" || !SAFE_FILE_NAME.test(obj.file)) return fail(`unsafe file name ${JSON.stringify(obj.file)}`);
   if (typeof obj.body !== "string") return fail("export has no body");
 
-  if (obj.kind === "root-cert" || obj.kind === "deputy-cert") {
-    const der = pemCertToDer(obj.body);
-    const vk = der && certSubjectVk(der);
-    if (!vk) return fail("body is not an ML-DSA-65 certificate");
-    if (derToPem(der) !== obj.body) return fail("body is not canonical PEM (64-character lines, trailing newline)");
-    const vkHex = bytesToHexStr(vk);
-    const digest = await pin(vkHex);
-    out.ski = digest.slice(0, 40);
-    out.pin = obj.kind === "root-cert" ? digest : null;   // the root pin is a Root key's only
-    out.folder = ROOT_OUTBOX;
-    let expected;
-    if (obj.kind === "root-cert") {
-      expected = `root-${out.ski}.pem`;
-    } else {
-      // sign-deputy-cert names it for the ISSUING Root (six Roots certify one
-      // Deputy): the AuthorityKeyIdentifier carries that Root's ski.
-      out.issuer_ski = certAuthorityKeyId(der);
-      if (!out.issuer_ski || out.issuer_ski.length !== 40) return fail("certificate has no 20-byte AuthorityKeyIdentifier");
-      expected = `deputy-${out.issuer_ski}.pem`;
+  if (CA_FILE_KINDS.has(obj.kind)) {
+    const pem = pemDecode(obj.body);
+    if (!pem) return fail("body is not a certificate or certificate request PEM");
+    const id = pem.label === "CERTIFICATE" ? await identifyCertificate(pem.der) : await identifyRequest(pem.der);
+    if (id.error) return fail(`export kind ${obj.kind}: the body is not one (${id.error})`);
+    if (id.kind !== obj.kind) return fail(`export kind ${obj.kind}, but the body is a ${id.kind}`);
+    if (derToPem(pem.der, pem.label) !== obj.body) return fail("body is not canonical PEM (64-character lines, trailing newline)");
+    const where = (sub) => `~/7fchain/${id.network || "<network>"}/governance/${sub}`;
+    out.ski = id.ski;
+    if (id.kind === "csr") {
+      if (obj.file !== id.file) return fail(`file name ${obj.file} does not match the request (expected ${id.file})`);
+      out.requested_name = id.requested_name;
+      const inbox = requestInbox(id.role);
+      if (inbox) out.folder = where(inbox);
+      return out;
     }
-    if (obj.file !== expected) return fail(`file name ${obj.file} does not match the certificate (expected ${expected})`);
+    if (!id.names.includes(obj.file)) return fail(`file name ${obj.file} does not match the certificate (expected ${id.names.join(" or ")})`);
+    out.network = id.network;
+    out.issuer_ski = id.issuer_ski;
+    out.purpose = id.purpose || null;
+    out.pin = id.kind === "root-cert" ? await pin(bytesToHexStr(certSubjectVk(pem.der))) : null;  // the root pin is a Root key's only
+    if (id.kind === "root-cert" || id.kind === "deputy-cert") {
+      out.folder = ROOT_OUTBOX;   // the Root wrote both
+    } else {
+      // Whoever receives these does not file them under governance/: they go on.
+      out.next = id.kind === "centcom-cert"
+        ? "send it to the coordinator for the public repo"
+        : "on the registrar server, sf-registrar install --cert this file --chain the CentCom, Deputy and Root certificates";
+    }
     return out;
   }
   const vkFolder = VK_KINDS.get(obj.kind);
@@ -463,6 +564,6 @@ class BBQrSession {
   }
 }
 
-return { fromBase36Pair, base32Decode, hexDecode, concatBytes, reconstructPayload, BBQrSession, ski, pin, vkBundle, vkSummary, saveMethod, inspectExport, certSubjectVk, csrSubjectVk, certAuthorityKeyId, bytesToHexStr };
+return { identifyCertificate, identifyRequest, derToPem, fromBase36Pair, base32Decode, hexDecode, concatBytes, reconstructPayload, BBQrSession, ski, pin, vkBundle, vkSummary, saveMethod, inspectExport, certSubjectVk, csrSubjectVk, certAuthorityKeyId, bytesToHexStr };
 
 });
